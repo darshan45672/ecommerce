@@ -1,0 +1,24 @@
+services:
+  ecommerce:
+    container_name: laravel-ecommerce
+    build: .
+    volumes:
+      - ./ecom:/var/www/html
+      - ./000-default.conf:/etc/apache2/sites-available/000-default.conf
+    ports:
+      - 8000:80
+    
+  mysql_db:
+    image: mysql:latest
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ecommerce
+    ports:
+      - 3306:3306
+    
+  phpmyadmin:
+    image: phpmyadmin:latest
+    ports:
+      - 8001:80
+    environment:
+      - PMA_ARBITRARY=1
