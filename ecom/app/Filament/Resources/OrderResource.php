@@ -4,26 +4,133 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\OrderResource\Pages;
 use App\Filament\Resources\OrderResource\RelationManagers;
+use App\Filament\Resources\OrderResource\RelationManagers\AddressRelationManager;
 use App\Models\Order;
+use App\Models\Product;
 use Filament\Forms;
+use Filament\Forms\Components\Group;
+use Filament\Forms\Components\Hidden;
+use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Repeater;
+use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\ToggleButtons;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Filament\Resources\Resource;
 use Filament\Tables;
+use Filament\Tables\Actions\ActionGroup;
+use Filament\Tables\Actions\DeleteAction;
+use Filament\Tables\Actions\EditAction;
+use Filament\Tables\Actions\ViewAction;
+use Filament\Tables\Columns\SelectColumn;
+use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Support\Number;
 
 class OrderResource extends Resource
 {
     protected static ?string $model = Order::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+    protected static ?string $navigationIcon = 'heroicon-o-shopping-bag';
 
     public static function form(Form $form): Form
     {
         return $form
             ->schema([
-                //
+                Group::make()->schema([
+                    Section::make('Order Information')->schema([
+                        Select::make('user_id')->label("Customer")->relationship('user', 'name')->searchable()->preload()->required(),
+                        Select::make('payment_method')->options([
+                            'stripe' => 'Stripe',
+                            'cod' => 'Cash on delivery',
+                        ])->required(),
+                        Select::make('payment_status')->options([
+                            'pending' => "Pending",
+                            'paid' => "Paid",
+                            'failed' => "Failed"
+                        ])->default('pending')->required(),
+                        ToggleButtons::make('status')->inline()->default('new')->required()->options([
+                            'new' => "New",
+                            'processing' => "Processing",
+                            'shipped' => "Shipped",
+                            'delivered' => "Delivered",
+                            'canceled' => "Cancelled",
+                        ])->colors([
+                                    'new' => "info",
+                                    'processing' => "warning",
+                                    'shipped' => "info",
+                                    'delivered' => "success",
+                                    'canceled' => "danger"
+                                ])->icons([
+                                    'new' => "heroicon-m-sparkles",
+                                    'processing' => "heroicon-m-arrow-path",
+                                    'shipped' => "heroicon-m-truck",
+                                    'delivered' => "heroicon-m-check-badge",
+                                    'canceled' => "heroicon-m-x-circle"
+                                ]),
+                        Select::make('currency')->options([
+                            'inr' => 'INR',
+                            'usd' => 'USD',
+                            'eur' => 'EUR',
+                            'gbp' => 'GBP'
+                        ])->required()->default('inr'),
+
+                        Select::make('shipping_method')->options([
+                            'fedex' => 'FedEx',
+                            'dhl' => 'DHL',
+                            'ups' => 'UPS',
+                            'usps' => 'USPS',
+                        ])->required(),
+
+                        Textarea::make('notes')->columnSpanFull()
+                    ])->columns(2),
+
+                    Section::make('Ordered Items')->schema([
+                        Repeater::make('items')->relationship()->schema([
+                            Select::make('product_id')->relationship('product', 'name')
+                                ->searchable()
+                                ->preload()
+                                ->required()->distinct()
+                                ->disableOptionsWhenSelectedInSiblingRepeaterItems()->reactive()
+                                ->afterStateUpdated(fn($state, Set $set) => $set('unit_amount', Product::find($state)?->price ?? 0))
+                                ->disableOptionsWhenSelectedInSiblingRepeaterItems()->reactive()
+                                ->afterStateUpdated(fn($state, Set $set) => $set('total_amount', Product::find($state)?->price ?? 0))
+                                ->columnSpan(4),
+
+                            TextInput::make('quantity')->numeric()
+                                ->required()
+                                ->default(1)
+                                ->minValue(1)->reactive()
+                                ->afterStateUpdated(fn($state, Set $set, Get $get) => $set('total_amount', ($state * $get('unit_amount'))))
+                                ->columnSpan(2),
+                            TextInput::make('unit_amount')->numeric()->required()->disabled()->dehydrated()->columnSpan(3),
+                            TextInput::make('total_amount')->numeric()->required()->dehydrated()->columnSpan(3),
+                        ])->columns(12),
+
+                        Placeholder::make('grand_total_placeholder')->label('Grand Total')
+                            ->content(function (Get $get, Set $set) {
+                                $total = 0;
+                                if (!$repeaters = $get('items')) {
+                                    return $total;
+                                }
+
+                                foreach ($repeaters as $key => $repeater) {
+                                    $total += $get("items.{$key}.total_amount");
+                                }
+                                $set('grand_total', $total);
+                                return Number::currency($total, 'INR');
+                            }),
+
+                        Hidden::make('grand_total')->default(1),
+                    ]),
+
+                ])->columnSpanFull(),
             ]);
     }
 
@@ -31,14 +138,31 @@ class OrderResource extends Resource
     {
         return $table
             ->columns([
-                //
+                TextColumn::make('user.name')->sortable()->searchable()->label("Customer"),
+                TextColumn::make('grand_total')->sortable()->numeric()->money('INR')->label("Total Amount"),
+                TextColumn::make('payment_method')->sortable()->searchable()->label("Payment Method"),
+                TextColumn::make('payment_status')->sortable()->searchable()->label("Payment Status"),
+                TextColumn::make('currency')->sortable()->searchable()->label("Currency"),
+                TextColumn::make('shipping_method')->sortable()->searchable()->label("Shipping Method")->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('created_at')->sortable()->dateTime()->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('update_at')->sortable()->dateTime()->toggleable(isToggledHiddenByDefault: true),
+                SelectColumn::make('status')->options([
+                    'new' => "New",
+                    'processing' => "Processing",
+                    'shipped' => "Shipped",
+                    'delivered' => "Delivered",
+                    'canceled' => "Cancelled",
+                ])->searchable()->sortable(),
             ])
             ->filters([
                 //
             ])
             ->actions([
-                Tables\Actions\ViewAction::make(),
-                Tables\Actions\EditAction::make(),
+                ActionGroup::make([
+                    ViewAction::make(),
+                    EditAction::make(),
+                    DeleteAction::make(),
+                ]),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
@@ -50,7 +174,7 @@ class OrderResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            AddressRelationManager::class,
         ];
     }
 
