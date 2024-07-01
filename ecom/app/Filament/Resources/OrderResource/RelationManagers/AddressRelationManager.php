@@ -3,9 +3,12 @@
 namespace App\Filament\Resources\OrderResource\RelationManagers;
 
 use Filament\Forms;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
+use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
@@ -18,9 +21,15 @@ class AddressRelationManager extends RelationManager
     {
         return $form
             ->schema([
-                Forms\Components\TextInput::make('street_address')
-                    ->required()
-                    ->maxLength(255),
+                TextInput::make('first_name')->required()->maxLength(255),
+                TextInput::make('last_name')->required()->maxLength(255),
+                TextInput::make('email')->email()->required()->maxLength(255),
+                TextInput::make('phone')->tel()->required()->maxLength(20),
+                TextInput::make('city')->required()->maxLength(255),
+                TextInput::make('state')->required()->maxLength(255),
+                TextInput::make('zip')->required()->maxLength(10)->numeric(),
+                TextInput::make('country')->required()->maxLength(255),
+                Textarea::make('street_address')->required()->columnSpanFull(),
             ]);
     }
 
@@ -29,7 +38,14 @@ class AddressRelationManager extends RelationManager
         return $table
             ->recordTitleAttribute('street_address')
             ->columns([
-                Tables\Columns\TextColumn::make('street_address'),
+                TextColumn::make('fullname')->label('Full Name'),
+                TextColumn::make('email')->label('Email'),
+                TextColumn::make('phone')->label('Phone'),
+                TextColumn::make('city')->label('City'),
+                TextColumn::make('state')->label('State'),
+                TextColumn::make('zip')->label('Zip'),
+                TextColumn::make('country')->label('Country'),
+                
             ])
             ->filters([
                 //
